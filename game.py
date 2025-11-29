@@ -7,6 +7,8 @@ from player import Player
 from constants import *
 
 
+
+
 # TODO # Result of decide_winner is seemingly correct, but text on screen is wrong...
 
 class Game:
@@ -50,6 +52,9 @@ class Game:
 
         self.human_player = self.players[3]
         self.action_required = False
+        self.run = True
+
+        self.round_ended_time = 0
 
     def check_chip_count(self):
         total_chips = self.start_funds * self.num_p
@@ -63,13 +68,12 @@ class Game:
         if total_chips != current_chips:
             print(f"GAME CORRUPTED!!!: Chip count is wrong. It is {current_chips}")
 
-    def deal_cards(self):
+    def deal_cards(self, gui):
         for i in range(0, self.num_p):
             self.players[i].cards = self.deck[5 + i * 2:7 + i * 2]
             # Highest value card is first
             if self.players[i].cards[0].value < self.players[i].cards[1].value:
                 self.players[i].cards[0], self.players[i].cards[1] = self.players[i].cards[1], self.players[i].cards[0]
-
             if self.players[i].cards[0].value == self.players[i].cards[0].value and self.players[i].cards[0].suit < \
                     self.players[i].cards[1].suit:
                 self.players[i].cards[0].suit, self.players[i].cards[1].suit = self.players[i].cards[1].suit, \
@@ -114,7 +118,7 @@ class Game:
         #
         self.actions_remaining = len(self.hand_players)
 
-    def new_game(self):
+    def new_game(self, gui):
         if self.state == "not_started" or self.state == "showdown" or len(self.hand_players) == 1:
             """""""""
             if self.pot != 0:
@@ -147,28 +151,28 @@ class Game:
             if len(self.hand_players) > 1:
                 self.deck = draw_cards(52)
                 # self.deck = draw_cards(5 + len(self.players) * 2)
-                self.deal_cards()
+                self.deal_cards(gui)
 
                 ####test
-                """""""""
+                #"""""""""
                 for player in self.hand_players:
                     player.cards[0].make_specific(10, 3)
                     player.cards[1].make_specific(2, 1)
                 
-                self.hand_players[1].cards[0].make_specific(12, 3)
-                self.hand_players[1].cards[1].make_specific(11, 4)
+                #self.hand_players[1].cards[0].make_specific(12, 3)
+                #self.hand_players[1].cards[1].make_specific(11, 4)
         
-                self.hand_players[2].cards[0].make_specific(12, 1)
-                self.hand_players[2].cards[1].make_specific(7, 4)
+                #self.hand_players[2].cards[0].make_specific(12, 1)
+                #self.hand_players[2].cards[1].make_specific(7, 4)
                 
-                self.cards[0].make_specific(8, 4)
-                self.cards[1].make_specific(3, 4)
-                self.cards[2].make_specific(4, 4)
-                self.cards[3].make_specific(9, 3)
-                self.cards[4].make_specific(6, 4)
+                #self.cards[0].make_specific(8, 4)
+                #self.cards[1].make_specific(3, 4)
+                #self.cards[2].make_specific(4, 4)
+                #self.cards[3].make_specific(9, 3)
+                #self.cards[4].make_specific(6, 4)
         
                 ####test
-                 """""""""
+                #"""""""""
                 self.next_dealer_pos()
                 # self.update_acting_player()
 
@@ -196,8 +200,8 @@ class Game:
                 self.state = 'river'
             elif self.state == 'river':
                 self.state = 'showdown'
-        else:
-            print("The game cannot proceed: Not enough players")
+        elif not self.winners_found:
+            self.decide_winner()
 
     def players_value_their_hand(self):
 
@@ -213,7 +217,7 @@ class Game:
         elif self.state == 'river':
             for player in self.hand_players:
                 player.rank_river(self)
-
+    # TODO # When split: cards are not shown for long enough
     def decide_winner(self):
         print("-------------------SHOWDOWN-----------------")
         if len(self.hand_players) == 1:
@@ -265,7 +269,7 @@ class Game:
                             self.split_winners.append(player)  # Save everyone receiving chips in split for GUI
 
                     if len(paid_players) != 0:
-                        pie_of_pot = self.pot / len(paid_players)
+                        pie_of_pot = round(self.pot / len(paid_players))
                     else:
                         pie_of_pot = 0
                     for player in paid_players:
@@ -277,6 +281,7 @@ class Game:
                         self.hand_players.remove(player)
 
         self.winners_found = True
+        self.round_ended_time = time.time()
 
         for player in self.players:
             if player.showdown_value > 0:
@@ -314,21 +319,75 @@ class Game:
 
         self.acting_player = self.hand_players[acting_index]
 
-    # TODO # Ensure that when someone bets after blinds are placed, it counts as a raise, not a bet.
-    def betting_round(self, gui):
+    def start_betting_round(self, gui):
         self.player_can_give_input = False
         self.check_chip_count()
         self.players_value_their_hand()
 
         self.previous_bet = False  # New round, so first bet is indeed a bet, not a raise.
+        """""""""
         if self.state == "pre-flop":  # Unless big blinds have been placed? # TODO # Check it works correctly
             self.previous_bet = True
             self.previous_bet_amount = self.big_blind_amount
-
+        """""""""
         self.decide_acting_player()
         print(f'------------------{RED}{self.state}{RESET}-----------------')
         # print(f"Current Bet: {self.current_bet}, Pot:{self.pot}")
         self.actions_remaining = len(self.hand_players)
+
+        while self.actions_remaining > 0:
+            self.acting_player.find_valid_actions(self)
+            print(f"Options:{self.acting_player.valid_actions}")
+
+            if self.acting_player != self.human_player:
+                self.acting_player.decides(game=self)
+
+            elif "wait" not in self.human_player.valid_actions:
+                self.action_required = True
+                self.new_round = False
+                self.player_can_give_input = True
+                return
+            else:
+                self.human_player.decision = "wait"
+                self.action_required = False
+
+            self.acting_player.takes_action(game=self, decision=self.acting_player.decision,
+                                            bet_amount=self.acting_player.bet_amount,
+                                            raise_amount=self.acting_player.raise_amount, gui=gui)
+
+            # Can show each player action
+            if gui is not None:
+                gui.render_gui(self)
+                time.sleep(gui.delay)
+
+            print(
+                f"{GREEN}{self.acting_player.name}{RESET} {RED}{self.acting_player.decision}s{RESET}: {self.acting_player.bet_amount}/{self.acting_player.raise_amount}.P.Bet : {self.acting_player.bet}"
+                f" C.Bet : {self.current_bet} , "
+                f"{self.acting_player.current_rank} / {self.acting_player.current_range} / BL:{round(self.acting_player.bet / (self.acting_player.chips + self.acting_player.bet), 2)} / {round(self.acting_player.bet_limit, 2)}   ")
+            self.check_chip_count()
+            self.update_acting_player()
+
+        self.next_stage()
+
+        self.new_round = False
+        self.player_can_give_input = True
+
+    def finish_betting_round(self, gui):
+        self.player_can_give_input = False
+        self.check_chip_count()
+        # self.players_value_their_hand()
+
+        """""""""
+        # self.previous_bet = False  # New round, so first bet is indeed a bet, not a raise.
+        if self.state == "pre-flop":  # Unless big blinds have been placed? # TODO # Check it works correctly
+            self.previous_bet = True
+            self.previous_bet_amount = self.big_blind_amount
+        """""""""
+
+        # self.decide_acting_player()
+        # print(f'------------------{RED}{self.state}{RESET}-----------------')
+        # print(f"Current Bet: {self.current_bet}, Pot:{self.pot}")
+        # self.actions_remaining = len(self.hand_players)
 
         while self.actions_remaining > 0:
             print(f"Options:{self.acting_player.valid_actions}")
@@ -338,16 +397,13 @@ class Game:
 
             else:
                 self.action_required = True
-                while self.action_required:
-                    gui.render_request_human_input(self)
-                    gui.listen_for_human_action(self)
+                self.new_round = False
+                self.player_can_give_input = True
+                return
 
             self.acting_player.takes_action(game=self, decision=self.acting_player.decision,
                                             bet_amount=self.acting_player.bet_amount,
-                                            raise_amount=self.acting_player.raise_amount)
-
-
-
+                                            raise_amount=self.acting_player.raise_amount, gui=gui)
 
             # Can show each player action
             if gui is not None:
@@ -367,41 +423,37 @@ class Game:
         self.player_can_give_input = True
 
     def run_main(self, gui):
-        self.new_game()
-        run = True
+        self.new_game(gui)
 
-        slider_left = False
-        slider_right = False
+        gui.slider_left = False
+        gui.slider_right = False
 
-        while run:
+        while self.run:
             gui.render_gui(self)
             if self.new_round:
-                self.betting_round(gui)
+                self.start_betting_round(gui)
             time.sleep(gui.delay)
-            #gui.render_gui(self)
             self.clock.tick(60)
 
             if self.state == "showdown" and not self.winners_found:
                 self.decide_winner()
-
-            # TODO# What exactly does this if statement solve?
             if self.player_can_give_input:
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
-                        run = False
+                        self.run = False
                         break
                     if event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_ESCAPE:
-                            run = False
+                            self.run = False
                             break
                         if event.key == pygame.K_n:
                             if self.state != "pre_flop" and self.num_p > 1:
-                                self.new_game()
+                                self.new_game(gui)
                             elif self.state == "pre_flop":
                                 if len(self.hand_players) != 1:
                                     print("A new game is already being played")
                                 else:
-                                    self.new_game()
+                                    self.new_game(gui)
                                     print("Pre-flop,with one player...")
                             else:
                                 print("New game cannot start for some reason")
@@ -410,32 +462,61 @@ class Game:
                                 self.new_round = True
 
                         if event.key == pygame.K_RIGHT:
-                            slider_right = True
+                            gui.slider_right = True
                         if event.key == pygame.K_LEFT:
-                            slider_left = True
+                            gui.slider_left = True
                     elif event.type == pygame.KEYUP:
                         if event.key == pygame.K_RIGHT:
-                            slider_right = False
+                            gui.slider_right = False
                         if event.key == pygame.K_LEFT:
-                            slider_left = False
+                            gui.slider_left = False
 
-                    elif event.type == pygame.MOUSEBUTTONDOWN:
-                        print("Click")
-                        # TODO # When player clicks call/fold when its not his turn...?
+                    elif event.type == pygame.MOUSEBUTTONDOWN and self.action_required:
+                        loc = pygame.mouse.get_pos()
+                        if (CALL_BUTTON_X < loc[0] < CALL_BUTTON_X + CALL_BUTTON_WIDTH
+                                and CALL_BUTTON_Y < loc[1] < CALL_BUTTON_Y + CALL_BUTTON_HEIGHT):
+
+                            self.human_player.decision = gui.button_one_text.lower()
+                            self.human_player.bet_amount = gui.slider_value
+                            self.human_player.raise_amount = gui.slider_value
+
+                            self.acting_player.takes_action(game=self, gui=gui, decision=self.acting_player.decision,
+                                                            bet_amount=self.acting_player.bet_amount,
+                                                            raise_amount=self.acting_player.raise_amount)
+                            self.update_acting_player()
+                            self.action_required = False
+
+                            self.finish_betting_round(gui)
+                        elif (FOLD_BUTTON_X < loc[0] < FOLD_BUTTON_X + FOLD_BUTTON_WIDTH
+                              and FOLD_BUTTON_Y < loc[1] < FOLD_BUTTON_Y + FOLD_BUTTON_HEIGHT):
+
+                            self.human_player.decision = "fold"
+                            self.acting_player.takes_action(game=self, decision=self.acting_player.decision,
+                                                            bet_amount=self.acting_player.bet_amount,
+                                                            raise_amount=self.acting_player.raise_amount, gui=gui)
+                            self.action_required = False
+                            self.update_acting_player()
+
+                            self.finish_betting_round(gui)
+
+                        elif (gui.handle_x < loc[0] < gui.handle_x + HANDLE_WIDTH
+                              and HANDLE_Y < loc[1] < HANDLE_Y + HANDLE_HEIGHT):
+                            gui.handle_clicked = True
+                        elif (BAR_X < loc[0] < BAR_X + BAR_WIDTH
+                              and BAR_Y < loc[1] < BAR_Y + BAR_HEIGHT):
+                            gui.handle_x = loc[0]
+
+                    elif event.type == pygame.MOUSEBUTTONUP:
+                        loc = pygame.mouse.get_pos()
+                        if gui.handle_clicked == True:
+                            gui.handle_x = loc[0]
+                            gui.handle_clicked = False
             else:
                 time.sleep(1)
 
-            if slider_left:
-                gui.handle_x = max(BAR_X, gui.handle_x - 2)
+            gui.update_slider_position(self)
 
-            elif slider_right and gui.slider_value < self.players[3].chips:
-                gui.handle_x = min(gui.handle_x + 2, BAR_X + BAR_WIDTH - HANDLE_WIDTH / 2)
-
-            if self.action_required == False and self.state!="showdown":
+            if self.action_required == False and self.state != "showdown":
                 self.new_round = True
 
         # pygame.quit()
-
-
-
-

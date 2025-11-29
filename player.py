@@ -1,5 +1,5 @@
 import random
-
+import time
 import numpy as np
 import pandas as pd
 
@@ -266,7 +266,15 @@ class Player:
         # TESTING
         d=random.random()
         if "check" in player.valid_actions:
-            player.decision="check"
+
+            if d>0.6 and "bet" in player.valid_actions:
+                player.decision="bet"
+                player.bet_amount=game.big_blind_amount*(1+player.current_rank)
+            elif player.current_rank>0.7 and "bet" in player.valid_actions:
+                player.decision = "bet"
+                player.bet_amount = game.big_blind_amount ** (1 + player.current_rank)
+            else:
+                player.decision="check"
         elif "call" in player.valid_actions:
             if d>0.5:
                 player.decision="call"
@@ -591,22 +599,30 @@ class Player:
         if game.current_bet != previous_current_bet:
             game.actions_remaining = len(game.hand_players)
 
-    def takes_action(self, game, decision, bet_amount=0, raise_amount=0):
+    def takes_action(self, game,gui,decision, bet_amount=0, raise_amount=0):
+        time.sleep(gui.delay)
         if decision == "check":
             self.checks()
+            gui.check_sound.play()
         elif decision == "fold":
             self.folds(game)
+            gui.fold_sound.play()
         elif decision == 'call':
             self.calls(game)
+            gui.call_sound.play()
         elif decision == 'raise':
             self.raises(game, raise_amount=raise_amount)
+            gui.raise_sound.play()
         elif decision == "bet":
             self.bets(game, bet_amount=bet_amount)
+            gui.bet_sound.play()
         elif decision == 'all-in':
             self.all_ins(game)
+            gui.all_in_sound.play()
         elif decision == 'none':
             pass
         game.actions_remaining -= 1
+
 
     # TODO # Decision will be function of:
     #  -Player hand ranking at current stage.

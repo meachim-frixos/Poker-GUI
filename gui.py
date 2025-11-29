@@ -7,6 +7,7 @@ from card import categorize_value
 from constants import *
 
 
+# TODO # slider functionality
 # TODO # When both players are all in and the player with least chips wins, the pot is "split" because the player
 #  with more chips gets his extra back..
 def super_sample(image, new_height, new_width, factor, rotation_angle=0):
@@ -44,6 +45,9 @@ class GUI:
         pygame.font.init()
         font_size = int(DISPLAY_WIDTH * (1 / 64))
         self.font = pygame.font.SysFont('comicsans', font_size)
+
+        self.button_font_size = int(3 * DISPLAY_WIDTH / 160)
+
         self.background = pygame.transform.scale(pygame.image.load('Images/no back wood d2.png'),
                                                  (self.width * 0.8, self.height * 0.8))
         ##########################
@@ -115,6 +119,19 @@ class GUI:
         self.fold_button_pressed = False
 
         self.button_one_text = "Call"
+        self.slider_left = False
+        self.slider_right = False
+
+        self.handle_clicked = False
+
+        pygame.mixer.init()
+        self.check_sound = pygame.mixer.Sound("Audio/check_2.wav")
+        self.call_sound = pygame.mixer.Sound("Audio/call.wav")
+        self.fold_sound = pygame.mixer.Sound("Audio/fold.wav")
+        self.raise_sound = pygame.mixer.Sound("Audio/raise.wav")
+        self.bet_sound = pygame.mixer.Sound("Audio/bet.wav")
+        self.all_in_sound = pygame.mixer.Sound("Audio/all in.wav")
+        self.card_sound = pygame.mixer.Sound("Audio/dealing_card_f4ngy.wav")
 
     def render_gui(self, game):
         self.render_bg()
@@ -131,8 +148,15 @@ class GUI:
         self.render_raise_sliding_bar(game)
         self.render_fold_button()
 
+        self.render_request_human_input(game)
         # self.render_chips_test((DISPLAY_WIDTH / 5, DISPLAY_HEIGHT / 8))
         self.render_common_cards(game)
+
+        self.render_winners(game)
+
+        self.render_new_game_timer(game)
+
+        self.render_pot_chips([0,1,2,3])
 
         pygame.display.update()
 
@@ -156,7 +180,6 @@ class GUI:
             game.common_cards_shown = 5
             self.render_shown_cards(game)
             # game.decide_winner()
-            self.render_winners(game)
 
     def render_common_cards(self, game):
         card_position = 0
@@ -178,8 +201,15 @@ class GUI:
             if game.players[i] in game.hand_players:
                 x = self.seat_positions[i][0] - self.circle_radius + offset
                 y = self.seat_positions[i][1] - self.circle_radius / 2
-                self.display.blit(joker_left, (x, y - y_offset))
-                self.display.blit(joker_right, (x + self.card_width - card_squeeze_offset, y - y_offset))
+                if game.players[i] == game.human_player:
+                    human_card_left = super_sample(game.human_player.cards[0].image, CARD_HEIGHT, CARD_WIDTH, 2, 8)
+                    human_card_right = super_sample(game.human_player.cards[1].image, CARD_HEIGHT, CARD_WIDTH, 2, -8)
+
+                    self.display.blit(human_card_left, (x, y - y_offset))
+                    self.display.blit(human_card_right, (x + self.card_width - card_squeeze_offset, y - y_offset))
+                else:
+                    self.display.blit(joker_left, (x, y - y_offset))
+                    self.display.blit(joker_right, (x + self.card_width - card_squeeze_offset, y - y_offset))
 
     def render_shown_cards(self, game):
         card_squeeze_offset = CARD_WIDTH * 0.5
@@ -259,22 +289,23 @@ class GUI:
                 self.seat_positions[player.seat_number][1] + (2 * self.height / 10) + 20))
 
     def render_winners(self, game):
-        box_width = 0.28 * self.width
-        box_height = 0.025 * self.height
+        if game.winners_found:
+            box_width = 0.28 * self.width
+            box_height = 0.025 * self.height
 
-        x = 0.5 * self.width - box_width / 2
-        y = 0.64 * self.height
-        if not game.split:
-            winner = game.players[game.winner_loc]
-            winner_text = f"{winner.name} wins with : {categorize_value(winner.showdown_value)}"
-            self.draw_text_in_box(winner_text, "white", "black", x, y, box_width, box_height)
-        else:
-            winners_names = ','.join(player.name for player in game.split_winners)
-            winner_text_1 = f"The pot is split. Winners are : "
-            winner_text_2 = f"{winners_names}"
+            x = 0.5 * self.width - box_width / 2
+            y = 0.64 * self.height
+            if not game.split:
+                winner = game.players[game.winner_loc]
+                winner_text = f"{winner.name} wins with : {categorize_value(winner.showdown_value)}"
+                self.draw_text_in_box(winner_text, "white", "black", x, y, box_width, box_height)
+            else:
+                winners_names = ','.join(player.name for player in game.split_winners)
+                winner_text_1 = f"The pot is split. Winners are : "
+                winner_text_2 = f"{winners_names}"
 
-            self.draw_text_in_box(winner_text_1, "white", "black", x, y, box_width, box_height)
-            self.draw_text_in_box(winner_text_2, "white", "black", x, y + box_height, box_width, box_height)
+                self.draw_text_in_box(winner_text_1, "white", "black", x, y, box_width, box_height)
+                self.draw_text_in_box(winner_text_2, "white", "black", x, y + box_height, box_width, box_height)
 
     def render_dealer(self, game):
         x = self.dealer_positions[game.dealer_loc][0]
@@ -371,7 +402,7 @@ class GUI:
             self.display.blit(scaled_image, (x, y))
 
     def render_pot(self, game):
-        box_width = (4 / 48) * DISPLAY_WIDTH
+        box_width = (6 / 48) * DISPLAY_WIDTH
         box_height = (1 / 53) * DISPLAY_HEIGHT
         self.draw_text_in_box(f" Total Pot : {game.pot} $ ", "white", "black", self.width / 2 - box_width / 2,
                               self.height * 0.305,
@@ -433,7 +464,7 @@ class GUI:
     def render_call_check_bet_raise_button(self, game):
         # Draw the button
 
-        font = pygame.font.Font(None, 36)
+        font = pygame.font.Font(None, self.button_font_size)
 
         if self.slider_value == 0:
             if game.players[3].bet != game.current_bet:
@@ -460,7 +491,7 @@ class GUI:
 
     def render_fold_button(self):
         # Draw the button
-        font = pygame.font.Font(None, 36)
+        font = pygame.font.Font(None, self.button_font_size)
         text_2 = font.render("Fold", True, "white")
         text_rect_2 = text_2.get_rect(
             center=(FOLD_BUTTON_X + FOLD_BUTTON_WIDTH // 2, FOLD_BUTTON_Y + CALL_BUTTON_HEIGHT // 2))
@@ -480,6 +511,17 @@ class GUI:
         # Draw value text
         self.slider_value = int(
             (self.handle_x - BAR_X) / (BAR_WIDTH - HANDLE_WIDTH) * (max_value - min_value) + min_value)
+
+        self.slider_value = min(game.human_player.chips, self.slider_value)
+
+        if self.handle_x != BAR_X:
+            if game.previous_bet:
+                min_slider_value = max(game.big_blind_amount, game.previous_bet_amount)
+            else:
+                min_slider_value = game.big_blind_amount
+        else:
+            min_slider_value = 0
+        self.slider_value = max(min_slider_value, self.slider_value)
         value_text = font.render(
             f"{self.slider_value}", True,
             "BLACK")
@@ -490,36 +532,35 @@ class GUI:
 
         self.display.blit(value_text, (BAR_X + BAR_WIDTH, BAR_Y + (BAR_HEIGHT - value_text.get_height()) // 2))
 
-    ####
+    def render_request_human_input(self, game):
+        if game.action_required:
+            box_width = 0.28 * self.width
+            box_height = 0.025 * self.height
+            x = 0.5 * self.width - box_width / 2
+            y = 0.64 * self.height
+            self.draw_text_in_box("Please choose an action", "white", "black", x, y, box_width, box_height)
 
-    def listen_for_human_action(self, game):
-        for event in pygame.event.get():
-            if event.type == pygame.MOUSEBUTTONDOWN:  # if you click, show mouse position, useful for placing
-                loc = pygame.mouse.get_pos()
-                if (CALL_BUTTON_X < loc[0] < CALL_BUTTON_X + CALL_BUTTON_WIDTH
-                        and CALL_BUTTON_Y < loc[1] < CALL_BUTTON_Y + CALL_BUTTON_HEIGHT):
+    def update_slider_position(self, game):
+        gui = self
+        increment = 5
+        if gui.slider_left:
+            gui.handle_x = gui.handle_x - increment
+        elif gui.slider_right and gui.slider_value < game.players[3].chips:
+            gui.handle_x = gui.handle_x + increment
+        #Stay within bounds
+        gui.handle_x = max(gui.handle_x, BAR_X)
+        gui.handle_x = min(gui.handle_x, BAR_X + BAR_WIDTH - HANDLE_WIDTH / 2)
 
-                    game.human_player.decision = self.button_one_text
-                    game.human_player.bet_amount = self.slider_value
-                    game.human_player.raise_amount = self.slider_value
+    # TODO # Starting a new game through a render method isn't ideal...
+    def render_new_game_timer(self, game):
 
-                    game.action_required = False
-                elif (FOLD_BUTTON_X < loc[0] < FOLD_BUTTON_X + FOLD_BUTTON_WIDTH
-                      and FOLD_BUTTON_Y < loc[1] < FOLD_BUTTON_Y + FOLD_BUTTON_HEIGHT):
+        if game.winners_found:
+            timer = 5 - int(time.time() - game.round_ended_time)
 
-                    game.human_player.decision = "fold"
-                    game.action_required = False
-
-    def call_button_pressed(self, gui):
-        pass
-
-    def fold_button_pressed(self, gui):
-        pass
-
-    def render_request_human_input(self,game):
-        box_width = 0.28 * self.width
-        box_height = 0.025 * self.height
-        x = 0.5 * self.width - box_width / 2
-        y = 0.64 * self.height
-        self.draw_text_in_box("Please choose an action", "white", "black", x, y, box_width, box_height)
-        pygame.display.update()
+            if timer > 0:
+                y = 0.72 * self.height
+                time_text = self.font.render(f"New game in: {timer}", 1, "black")
+                x = self.width / 2 - 0.026 * DISPLAY_WIDTH
+                self.display.blit(time_text, (x, y))
+            else:
+                game.new_game(self)

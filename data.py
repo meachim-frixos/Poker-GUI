@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from card import draw_cards, Card, best_cards, combinations
-
+# TODO # Create large(er) simulation for starting hands
 
 def swap_values(row):
     if row['Card_1_Value'] == row['Card_2_Value'] and row['Card_1_Suit'] < row['Card_2_Suit']:
@@ -43,7 +43,6 @@ def create_card_objects(dataframe):
     return dataframe
 
 
-# TODO # Since value_cards function has changed, redo hand ranking simulation file.
 """""""""
 NOTE: Do not change the format of hand_rankings file. 
 Hand are not sorted by "score", but are instead sorted so that Card_1_Value is higher than Card_2_Value
